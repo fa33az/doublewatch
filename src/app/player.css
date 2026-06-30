@@ -1,0 +1,248 @@
+/* Minimalist UI Overlay for YouTube Player */
+.custom-controls-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.player-container:hover .custom-controls-overlay,
+.player-container:focus-within .custom-controls-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.controls-gradient-bg {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
+  z-index: 1;
+}
+
+.controls-content {
+  position: relative;
+  z-index: 2;
+  padding: 0 1.5rem 1.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Progress Bar - Minimal Line */
+.progress-container {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  background-color: rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  margin-bottom: 5px;
+  transition: height 0.1s ease;
+  border-radius: 2px;
+}
+
+.progress-container:hover {
+  height: 5px;
+}
+
+.progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background-color: #ffffff;
+  pointer-events: none;
+  z-index: 2;
+  border-radius: 2px;
+}
+
+/* Controls Row */
+.controls-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.controls-left, .controls-right {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.control-btn {
+  background: none;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  padding: 0;
+}
+
+.control-btn:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.time-display {
+  font-size: 0.75rem;
+  color: #aaaaaa;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #ffffff;
+  font-weight: 500;
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+  cursor: pointer; 
+  transition: opacity 0.2s;
+}
+
+.live-indicator:hover { 
+  opacity: 0.8; 
+}
+
+.live-icon {
+  animation: minimal-pulse 2s infinite;
+}
+
+@keyframes minimal-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+/* Mobile Tweaks */
+@media (max-width: 900px) {
+  .custom-controls-overlay {
+    height: 70px;
+  }
+  .controls-content {
+    padding: 0 1rem 1rem 1rem;
+  }
+  /* On mobile, always show controls on the active pane slightly so they know they can tap it */
+  .player-container.active .custom-controls-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.custom-chat-container { width: 100%; height: 100%; position: relative; background: transparent; }
+.custom-chat-messages { 
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.danmaku-message { 
+  position: absolute;
+  white-space: nowrap;
+  display: flex; 
+  gap: 0.5rem; 
+  align-items: center; 
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  padding: 4px 10px;
+  border-radius: 20px;
+  animation-name: danmaku-fly;
+  animation-timing-function: linear;
+  animation-fill-mode: both; /* 'both' keeps it at start position (right edge) during delay */
+  will-change: transform, left;
+  /* Start hidden at right edge, only appear when animation actually starts */
+  left: 100%;
+}
+
+@keyframes danmaku-fly { 
+  0% { left: 100%; transform: translateX(0); opacity: 1; } 
+  100% { left: 0; transform: translateX(-100%); opacity: 1; } 
+}
+
+.chat-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.chat-author { font-size: 0.8rem; color: #dddddd; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,1); display: inline; margin-right: 0.2rem; }
+.chat-text { font-size: 0.85rem; color: #ffffff; line-height: 1.3; text-shadow: 0 1px 3px rgba(0,0,0,1); display: inline-flex; align-items: center; gap: 0.2rem; }
+.custom-chat-error, .custom-chat-empty { display: none; }
+
+/* Member & Moderator Chat Styles */
+.danmaku-message.member { background: rgba(43, 166, 64, 0.35); border: 1px solid rgba(43,166,64,0.5); }
+.chat-author.member-text { color: #6ee7b7; }
+.danmaku-message.moderator { background: rgba(94, 132, 241, 0.35); border: 1px solid rgba(94,132,241,0.5); }
+.chat-author.moderator-text { color: #93c5fd; }
+
+.chat-badge { font-size: 0.5rem; font-weight: 700; padding: 0.1rem 0.3rem; border-radius: 2px; margin-right: 0.1rem; vertical-align: middle; display: inline-block; letter-spacing: 0.5px; box-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+.mod-badge { background-color: #5e84f1; color: white; }
+.member-badge { background-color: #2ba640; color: white; }
+
+.quality-selector-container { position: relative; display: flex; align-items: center; }
+.quality-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  background: rgba(15, 15, 15, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 110px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  z-index: 50;
+}
+
+.quality-option {
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  color: #cccccc;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.quality-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.quality-option.active {
+  color: var(--accent, #ffffff);
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Ad Overlay */
+.ad-overlay { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; background: rgba(0,0,0,0.55); backdrop-filter: blur(4px); pointer-events: none; animation: fadeIn 0.3s ease; }
+.ad-badge { background: rgba(255, 180, 0, 0.15); border: 1px solid rgba(255, 180, 0, 0.5); color: #ffcc00; font-size: 1rem; font-weight: 700; padding: 0.5rem 1.2rem; border-radius: 999px; letter-spacing: 0.03em; }
+.ad-sub { color: rgba(255,255,255,0.55); font-size: 0.78rem; margin: 0; text-align: center; }
+
