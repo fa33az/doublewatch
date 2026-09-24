@@ -4,6 +4,39 @@ Watch two to four YouTube live streams side by side and control their audio like
 
 DoubleWatch is a Next.js app. It embeds YouTube players, adds its own controls on top of them, and uses a few small API routes for search, live chat and stream info. It works without any API keys; a YouTube Data API key is optional.
 
+![Four live streams in a grid, all mixed together](docs/screenshots/grid.jpg)
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/two-screens.jpg" alt="Two screens with the crossfader and per-screen controls"></td>
+    <td width="50%"><img src="docs/screenshots/spotlight.jpg" alt="Spotlight layout with one large screen and three thumbnails"></td>
+  </tr>
+  <tr>
+    <td align="center">Two screens, crossfader and per-screen controls</td>
+    <td align="center">Spotlight layout</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/search.jpg" alt="Live stream search"></td>
+    <td width="50%"><img src="docs/screenshots/mixer.jpg" alt="Mixer with per-channel volume and output meters"></td>
+  </tr>
+  <tr>
+    <td align="center">Live search</td>
+    <td align="center">Mixer</td>
+  </tr>
+</table>
+
+On phones the screens sit on top at 16:9, with what's playing (or the chat) below:
+
+<p align="center">
+  <img src="docs/screenshots/mobile.jpg" width="260" alt="Phone layout with two screens and the now-playing panel">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/screenshots/mobile-chat.jpg" width="260" alt="Phone layout with the combined live chat">
+</p>
+
+<sub>Streams shown are from Lofi Girl on YouTube. Chat usernames are blurred.</sub>
+
 ## Features
 
 **Screens**
