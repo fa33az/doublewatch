@@ -1,167 +1,131 @@
-# 🎧 DoubleWatch - Multi-Screen YouTube Live Stream Mixer
+# DoubleWatch
 
-DoubleWatch is an open-source web app for watching 2–4 YouTube live streams side by side with DJ-style audio control. Built on Next.js 16, React and TypeScript with a lightweight dark UI in a tako.id-inspired palette (Nunito, slate-teal surfaces, blue accents, tactile "key" buttons). It features a crossfader and per-channel mixer, grid and spotlight layouts, live chat (a side panel per screen, or merged across channels), a library of presets, history and followed channels, shareable links, and an installable PWA.
+Watch two to four YouTube live streams side by side and control their audio like a DJ mixer.
 
----
+DoubleWatch is a Next.js app. It embeds YouTube players, adds its own controls on top of them, and uses a few small API routes for search, live chat and stream info. It works without any API keys; a YouTube Data API key is optional.
 
-## 📐 Architecture Topology
+## Features
 
-Here is the structural design of the DoubleWatch application:
-
-```mermaid
-graph TD
-  User([User Device / Browser]) -->|Loads App| NextClient[Next.js Client Components]
-  NextClient -->|Live Streaming Render| YouTubeEmbed[YouTube IFrame API Players]
-  NextClient -->|Controls Audio & Volume| AudioMixer[DJ Crossfader Engine]
-  NextClient -->|Fetch Search Results| NextAPI[Next.js API Routes /api/search]
-  NextClient -->|EventSource| ChatAPI["/api/chat/[videoId] (SSE)"]
-  ChatAPI -->|Polls live chat via youtube-chat| YTChat[YouTube Live Chat]
-  NextClient -->|Poll every 60s| VideoAPI["/api/video/[videoId]"]
-  NextClient -->|"@handle"| ResolveAPI["/api/resolve"]
-  
-  NextAPI -->|Query Cache Check| CacheCheck{Cache exists & < 60s?}
-  CacheCheck -->|Yes| NextAPI
-  CacheCheck -->|No| YTFetch{YOUTUBE_API_KEY set?}
-  
-  YTFetch -->|Yes / Official API| YTDataAPI[Google YouTube Data API v3]
-  YTFetch -->|No / Scraper Fallback| YTScrape[Direct YouTube Live Scrape Parser]
-  
-  YTDataAPI -->|Return JSON| NextAPI
-  YTScrape -->|Parse ytInitialData| NextAPI
-```
-
-### Key Components:
-1. **Next.js Client UI:** Runs React client-side logic to handle layout grids, states, local storage preferences, and custom volume transitions.
-2. **YouTube Player Engine:** Uses optimized HTML5 IFrames to stream YouTube Live content with custom playback wrappers.
-3. **DJ Crossfader Engine:** Dynamically calculates volume ratios (`CH 1` vs `CH 2`) based on the crossfader slider's input, adjusting individual player volumes via YouTube's iframe postMessage hooks.
-4. **Hybrid Search API Route (`/api/search`):** A dual-method search engine that runs securely on the backend, handling API calls or scraping to avoid CORS blocks.
-5. **Live Chat Stream (`/api/chat/[videoId]`):** A Server-Sent Events endpoint. It reads recent messages and a continuation token from YouTube's lightweight `live_chat` page, then polls the chat with [`youtube-chat`](https://www.npmjs.com/package/youtube-chat)'s client and parser. One connection per video is shared by every chat view in the browser, and messages are de-duplicated when the stream reconnects (Vercel ends functions after `maxDuration`).
-6. **Video Info (`/api/video/[videoId]`):** Title, channel, live status and concurrent viewers — from the Data API when a key is set, otherwise oEmbed plus YouTube's internal `updated_metadata` endpoint, falling back to the watch page.
-7. **Channel Resolver (`/api/resolve?handle=@name`):** Finds a channel's current live stream, used by `@handle` input and followed channels.
-
-All API routes are rate limited per IP. The limiter is in-memory, so on serverless hosts it applies per instance. YouTube intermittently answers server requests with a "confirm you're not a bot" page; the routes retry and avoid those pages where they can.
-
----
-
-## 🔒 YouTube API & Environment Variables
-
-DoubleWatch is open source and runs completely serverless. It features a **hybrid search system**:
-- **Official Mode:** If you provide your own official Google Cloud YouTube Data API v3 key, it will use official Google quota-controlled queries to retrieve streams and active concurrent viewer stats.
-- **Scraper Mode (Zero-Config Fallback):** If no environment variables are defined, the application automatically triggers a fallback scraper that parses public search results, making the repository work instantly out-of-the-box without keys.
-
-### Setting Up Your Environment
-To use your own API credentials, copy the environment template to your local environment file:
-
-```bash
-cp .env.example .env.local
-```
-
-Open `.env.local` and paste your Google API key:
-
-```env
-YOUTUBE_API_KEY=your_google_cloud_youtube_api_key_here
-NEXT_PUBLIC_SITE_URL=https://your-domain.example
-```
-
-`NEXT_PUBLIC_SITE_URL` is used to build absolute Open Graph image URLs for link previews. It defaults to `http://localhost:3000`.
-
-> **Note:** Scraper mode and live chat read YouTube's public web pages, which isn't an official API and may break when YouTube changes its markup. For public deployments, prefer an official API key.
-
----
-
-## ✨ Features
-
-**Screens & layout**
-- **2, 3 or 4 screens** in a grid, or **Spotlight** (one large screen plus thumbnails) that can follow whichever channel is audible.
-- **Resizable split** in 2-screen mode — drag the divider, double-click to reset.
-- **Per-screen controls:** channel label, stream title and viewer count, and buttons to replace, swap or clear a screen.
-- **Resolution picker per screen** (Auto, 4K–360p). The embed API ignores quality requests, so the iframe is rendered at the chosen resolution and scaled to fit; YouTube then streams that quality (bandwidth permitting).
-- **Per-screen volume** slider and mute, synced with the mixer.
-- **Stream states:** loading indicator, and a card when a stream ends or can't be embedded, with "find a replacement".
-- **Theater mode** (`F`): full screen with the control bar tucked away.
-- **Phones:** swipe between screens (audio can follow the visible one), bottom-sheet dialogs, and a thumb-friendly tab bar.
+**Screens**
+- 2, 3 or 4 screens in a grid, or a spotlight layout with one large screen and thumbnails
+- Resizable split in 2-screen mode (drag the divider, double-click to reset)
+- Per-screen controls: title and viewer count, volume, resolution, replace, swap and clear
+- Resolution picker per screen (Auto, 4K down to 360p)
+- Theater mode with an auto-hiding control dock
+- Swipe between screens on phones, with audio following the visible screen
 
 **Audio**
-- **Crossfader** for 2 screens with Standard, Constant-power or Cut curves.
-- **Solo / MIX** selector for 3–4 screens.
-- **Mixer panel:** per-channel volume and mute, master volume, and live output meters.
+- Crossfader for two screens, with standard, constant-power and cut curves
+- Solo or mix-all selector for three or four screens
+- Mixer panel with per-channel volume, mute and master level
 
-**Discovery & library**
-- **Live search** with categories, search-as-you-type and recent searches.
-- **Presets** to save and reopen channel combinations, plus a **watch history**.
-- **Follow channels** by `@handle` — see who is live and get notified when they go live.
-- **Flexible input:** `watch?v=`, `youtu.be/`, `/live/`, `/shorts/`, `/embed/` URLs, a bare video ID, or an `@handle` (plays its current live stream).
-- **Shareable links:** `/?v=ID1,ID2` opens the same set of streams for anyone.
+**Finding streams**
+- Live search with categories, search as you type and recent searches
+- Accepts `watch?v=`, `youtu.be/`, `/live/`, `/shorts/` and `/embed/` links, plain video IDs, or a channel `@handle`
+- Presets for saving channel combinations, plus watch history
+- Follow channels by `@handle` and get notified when they go live
+- Share links (`/?v=ID1,ID2`) that open the same set of streams
 
 **Live chat**
-- **Chat panel** beside each screen (below it on narrow screens).
-- **Combined chat** merging every screen's chat, tagged by channel.
-- Super Chat highlighting, member/moderator marks, and a blocked-words filter.
+- Chat panel next to each screen
+- Combined chat that merges every screen's chat, tagged by channel
+- Super Chat highlighting, member and moderator marks, blocked-word filter
 
-**Quality**
-- Flat UI with no blur or glow; only opacity/transform are animated.
-- Keyboard accessible (focus-trapped dialogs, `?` shortcut overview) and respects reduced-motion settings.
-- Installable as a PWA.
+**Other**
+- Keyboard shortcuts (press `?` in the app for the full list)
+- Installable as a PWA
+- Accessible dialogs with focus trapping; respects reduced-motion settings
 
-### Keyboard Shortcuts
+## Getting started
 
-| Key | 2-screen mode | 3–4-screen mode |
-| --- | --- | --- |
-| `1` / `←` | Full audio to CH 1 | `1`–`4`: solo that channel |
-| `2` / `→` | Full audio to CH 2 | |
-| `0`, `3`, `↑`, `↓` | Mix both | `0`: MIX all channels |
+Requirements: Node.js 20.9 or later.
+
+```bash
+git clone https://github.com/fa33az/doublewatch.git
+cd doublewatch
+npm install
+npm run dev
+```
+
+Then open http://localhost:3000.
+
+### Scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run build` | Build for production |
+| `npm run start` | Serve the production build |
+| `npm run lint` | Lint with oxlint |
+| `npm run typecheck` | Type-check with `tsc --noEmit` |
+
+### Configuration
+
+Both variables are optional. Copy `.env.example` to `.env.local` and fill in what you need.
+
+| Variable | Description |
+| --- | --- |
+| `YOUTUBE_API_KEY` | YouTube Data API v3 key. When set, search and stream info use the official API. Without it, the app reads YouTube's public pages instead. |
+| `NEXT_PUBLIC_SITE_URL` | Public URL of your deployment, used for Open Graph image links. Defaults to `http://localhost:3000`. |
+
+## How it works
+
+**Players.** Each screen is a YouTube IFrame player with the native controls turned off. Volume, pause and live-edge seeking go through the IFrame API.
+
+**Resolution.** The embed API ignores requests to set a quality, but YouTube still picks the quality based on the player's size. To choose a resolution, the iframe is rendered at that size and scaled down with a CSS transform to fit the screen. YouTube can still lower it if the connection is slow.
+
+**Search** (`/api/search`) uses the Data API when a key is set and otherwise parses YouTube's search results page, filtered to live streams.
+
+**Live chat** (`/api/chat/[videoId]`) is a Server-Sent Events stream. It reads recent messages and a continuation token from YouTube's `live_chat` page, then polls for new messages using the client and parser from [`youtube-chat`](https://www.npmjs.com/package/youtube-chat). The browser opens one connection per video and shares it between the chat panel and the combined chat.
+
+**Stream info** (`/api/video/[videoId]`) returns title, channel, live status and viewer count. Without an API key it combines oEmbed with YouTube's internal `updated_metadata` endpoint.
+
+**Channel lookup** (`/api/resolve?handle=@name`) finds a channel's current live stream from its `/live` page.
+
+All API routes are rate limited per IP. The limiter keeps its state in memory, so on serverless platforms the limit applies per instance.
+
+### Limitations
+
+- Without an API key, search, chat and stream info rely on YouTube's web pages and internal endpoints. They can break if YouTube changes them, and YouTube sometimes serves a "confirm you're not a bot" page to servers. The routes retry, but for a public deployment an API key is more reliable.
+- Some videos can't be embedded because their owners have disabled playback on other sites.
+
+## Deployment
+
+The app deploys to Vercel without extra configuration. The chat route sets `maxDuration = 300`; when Vercel ends the function, the browser reconnects automatically and duplicate messages are dropped.
+
+## Project structure
+
+```
+src/
+  app/
+    api/
+      chat/[videoId]/    live chat stream (SSE)
+      resolve/           @handle to current live stream
+      search/            live stream search
+      video/[videoId]/   title, live status and viewers
+    page.tsx             main screen
+    globals.css          styles
+  components/            UI components
+  hooks/                 React hooks
+  lib/                   shared logic: layout, mixer, storage, YouTube helpers
+```
+
+## Keyboard shortcuts
 
 | Key | Action |
 | --- | --- |
-| `Space` | Pause / play all screens |
+| `1` / `2` | 2 screens: full audio to CH 1 / CH 2 |
+| `0` or `3` | 2 screens: mix both |
+| `1`–`4` | 3–4 screens: listen to that channel only |
+| `0` | 3–4 screens: mix all channels |
+| `Space` | Pause or play all screens |
 | `C` | Toggle chat on all live screens |
 | `F` | Theater mode |
-| `M` | Mute / unmute master |
-| `S` or `/` | Search live streams |
-| `L` | Open library |
+| `M` | Mute or unmute master |
+| `S` or `/` | Search |
+| `L` | Library |
 | `?` | Show all shortcuts |
 
----
+## License
 
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js (v20.9 or later, required by Next.js 16)
-- npm or yarn
-
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/fa33az/doublewatch.git
-   cd doublewatch
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Run the development server:
-   ```bash
-   npm run dev
-   ```
-   Open [http://localhost:3000](http://localhost:3000) (or 3001) in your browser.
-
-4. Build for production:
-   ```bash
-   npm run build
-   npm run start
-   ```
-
-5. Lint and type-check:
-   ```bash
-   npm run lint        # oxlint
-   npm run typecheck   # tsc --noEmit
-   ```
-
----
-
-## 📄 License
-
-This project is licensed under the [Apache License 2.0](LICENSE).
+[Apache License 2.0](LICENSE)
