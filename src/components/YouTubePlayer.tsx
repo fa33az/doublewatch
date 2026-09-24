@@ -2,12 +2,12 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import YouTube, { type YouTubeProps } from 'react-youtube';
-import { Maximize, MessageSquare, MessageSquareOff, Play, Pause, Volume1, Volume2, VolumeX, Check } from 'lucide-react';
+import { Maximize, MessageSquare, MessageSquareOff, Play, Pause, Volume1, Volume2, VolumeX, Settings } from 'lucide-react';
 import ChatPanel from './ChatPanel';
 import PaneToolbar from './PaneToolbar';
 import StreamEndedCard from './StreamEndedCard';
 import type { AppSettings } from '../lib/settings';
-import { QUALITY_TARGETS, qualityFrameStyle, type QualityTarget } from '../lib/quality';
+import { useToast } from './Toast';
 import { useVideoMeta } from '../hooks/useVideoMeta';
 import { useAutoHide } from '../hooks/useAutoHide';
 
@@ -30,6 +30,7 @@ interface YouTubePlayerProps {
   paused: boolean;
   onTogglePause: () => void;
   showChat: boolean;
+  inlineChat: boolean;      // render the chat panel inside this screen (desktop); phones show it under the videos
   onToggleChat: () => void;
   canPromote: boolean;
   onPromote: () => void;
@@ -37,9 +38,7 @@ interface YouTubePlayerProps {
   onSwap: (target: number) => void;
   onClear: () => void;
   onInfo: (info: VideoInfo) => void;
-  qualityTarget: QualityTarget;
-  onQualityTargetChange: (target: QualityTarget) => void;
-  onQualityTargetAll: (target: QualityTarget) => void;
+  onPseudoFullscreen: () => void;   // for browsers without element fullscreen (iPhone Safari)
 }
 
 // YouTube IFrame API onError codes
@@ -62,8 +61,9 @@ const LIVE_EDGE = 999_999; // seeking past the end jumps a live stream to its li
 type EndState = { kind: 'ended' | 'error'; message: string } | null;
 
 const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
-  videoId, slot, channelCount, volume, level, muted, onLevelChange, onToggleMute, settings, paused, onTogglePause, showChat, onToggleChat,
-  canPromote, onPromote, onReplace, onSwap, onClear, onInfo, qualityTarget, onQualityTargetChange, onQualityTargetAll,
+  videoId, slot, channelCount, volume, level, muted, onLevelChange, onToggleMute, settings, paused, onTogglePause, showChat, inlineChat, onToggleChat,
+  canPromote, onPromote, onReplace, onSwap, onClear, onInfo,
+  onPseudoFullscreen,
 }) => {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,26 +86,22 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   const pokeChip = chipFlash.poke;
   useEffect(() => { pokeChip(); }, [onAir, pokeChip]);
 
-  /* ── Resolution: size the iframe for the chosen quality, then scale it to fit (see lib/quality) ── */
-  const videoRef = useRef<HTMLDivElement>(null);
-  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
-  const [qualityMenu, setQualityMenu] = useState(false);
+  /* ── Resolution ──
+     The embed API ignores quality requests, but a quality picked in YouTube's own ⚙ menu is
+     honored — and YouTube remembers it (yt-player-quality, ~1 year) for every embed on this
+     site, including the other screens. So "Resolusi" briefly reloads this screen with YouTube's
+     native controls; once picked, "Selesai" switches back. */
+  const toast = useToast();
+  const [nativeMode, setNativeMode] = useState(false);
 
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      setVideoSize({ width: Math.round(width), height: Math.round(height) });
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  const frameStyle = qualityFrameStyle(
-    qualityTarget, videoSize.width, videoSize.height,
-    typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1,
-  );
+  const openResolution = () => {
+    controls.hide();
+    setNativeMode(true);
+  };
+  const closeResolution = () => {
+    setNativeMode(false);
+    toast('Resolusi disimpan — berlaku untuk semua layar', 3000);
+  };
 
   const isLive = durationIsZero || meta?.isLive === true;
   const title = meta?.title || videoData?.title || '';
@@ -284,9 +280,21 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     playerRef.current?.seekTo(time, true);
   };
 
+  // Like the YouTube app: fullscreen this screen and turn phones to landscape
   const toggleFullscreen = () => {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else containerRef.current?.requestFullscreen?.();
+    const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+      orientation?.unlock?.();
+      return;
+    }
+    const el = containerRef.current;
+    if (!el?.requestFullscreen) { onPseudoFullscreen(); return; }
+    el.requestFullscreen()
+      .then(() => {
+        if (window.matchMedia('(pointer: coarse)').matches) orientation?.lock?.('landscape').catch(() => {});
+      })
+      .catch(() => onPseudoFullscreen());
   };
 
   const syncToLiveEdge = () => {
@@ -300,8 +308,8 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     playerVars: {
       autoplay: 1,
       mute: 1, // Crucial to bypass browser autoplay blocks which cause the native UI to appear
-      controls: 0,
-      disablekb: 1,
+      controls: nativeMode ? 1 : 0,
+      disablekb: nativeMode ? 0 : 1,
       modestbranding: 1,
       rel: 0,
       iv_load_policy: 3,
@@ -309,8 +317,8 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     },
   };
 
-  const chatPanel = showChat && isLive;
-  const active = controls.visible || qualityMenu;
+  const chatPanel = showChat && isLive && inlineChat;
+  const active = controls.visible;
   const progress = duration ? (currentTime / duration) * 100 : 0;
   // Turned up here but silenced by the crossfader / channel selector
   const silent = !muted && level > 0 && volume === 0;
@@ -318,14 +326,14 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`player ${active ? 'is-active' : ''}`}
+      className={`player ${active ? 'is-active' : ''} ${nativeMode ? 'is-native' : ''}`}
       onPointerMove={controls.poke}
       onPointerDown={controls.poke}
-      onPointerLeave={() => { if (!qualityMenu) controls.hide(); }}
+      onPointerLeave={e => { if (e.pointerType === 'mouse') controls.hide(); }}
     >
-      <div className="player-video" ref={videoRef}>
+      <div className="player-video">
         <YouTube
-          key={reloadKey}
+          key={`${reloadKey}-${nativeMode ? 'native' : 'custom'}`}
           videoId={videoId}
           opts={opts}
           onReady={onReady}
@@ -333,8 +341,14 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           onError={onError}
           onPlaybackQualityChange={e => setQuality(String(e.data))}
           className="player-frame"
-          style={frameStyle}
         />
+
+        {nativeMode && (
+          <div className="native-bar" role="dialog" aria-label="Atur resolusi">
+            <p className="native-hint"><Settings size={15} /> Ketuk video, lalu ⚙ di pojok kanan atas → Kualitas (Quality)</p>
+            <button className="btn btn-primary btn-sm" onClick={closeResolution}>Selesai</button>
+          </div>
+        )}
 
         {!isPlaying && !endState && (
           <div className="player-state" role="status" aria-label="Memuat siaran">
@@ -416,43 +430,14 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
 
             <span className="spacer" />
 
-            <div className="menu-anchor hide-narrow">
-              <button
-                className="quality-btn"
-                onClick={() => setQualityMenu(m => !m)}
-                aria-haspopup="menu"
-                aria-expanded={qualityMenu}
-                aria-label={`Resolusi: ${QUALITY_TARGETS.find(q => q.value === qualityTarget)?.label}`}
-                title="Resolusi"
-              >
-                {QUALITY_LABELS[quality] ?? '—'}
-                {qualityTarget !== 'auto' && <span className="quality-pin" aria-hidden="true" />}
-              </button>
-              {qualityMenu && (
-                <div className="menu quality-menu" role="menu">
-                  <p className="menu-title">Resolusi</p>
-                  {QUALITY_TARGETS.map(q => (
-                    <button
-                      key={q.value}
-                      role="menuitemradio"
-                      aria-checked={q.value === qualityTarget}
-                      className="menu-item"
-                      onClick={() => { onQualityTargetChange(q.value); setQualityMenu(false); }}
-                    >
-                      <span className="menu-check">{q.value === qualityTarget && <Check size={14} />}</span>
-                      {q.label}
-                      {q.value === 'auto' && QUALITY_LABELS[quality] && <span className="menu-meta">{QUALITY_LABELS[quality]}</span>}
-                    </button>
-                  ))}
-                  <div className="menu-divider" />
-                  <button className="menu-item" role="menuitem" onClick={() => { onQualityTargetAll(qualityTarget); setQualityMenu(false); }}>
-                    <span className="menu-check" />
-                    Terapkan ke semua layar
-                  </button>
-                  <p className="menu-note">Tetap bergantung pada koneksi: YouTube bisa menurunkannya jika internet lambat.</p>
-                </div>
-              )}
-            </div>
+            <button
+              className="quality-btn hide-narrow"
+              onClick={openResolution}
+              aria-label={`Resolusi ${QUALITY_LABELS[quality] ?? 'otomatis'} — atur`}
+              title="Atur resolusi"
+            >
+              {QUALITY_LABELS[quality] ?? 'Auto'}
+            </button>
 
             {isLive && (
               <button

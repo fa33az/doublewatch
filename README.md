@@ -10,7 +10,7 @@ DoubleWatch is a Next.js app. It embeds YouTube players, adds its own controls o
 - 2, 3 or 4 screens in a grid, or a spotlight layout with one large screen and thumbnails
 - Resizable split in 2-screen mode (drag the divider, double-click to reset)
 - Per-screen controls: title and viewer count, volume, resolution, replace, swap and clear
-- Resolution picker per screen (Auto, 4K down to 360p)
+- Resolution selection that applies to all screens and is remembered
 - Theater mode with an auto-hiding control dock
 - Swipe between screens on phones, with audio following the visible screen
 
@@ -72,7 +72,7 @@ Both variables are optional. Copy `.env.example` to `.env.local` and fill in wha
 
 **Players.** Each screen is a YouTube IFrame player with the native controls turned off. Volume, pause and live-edge seeking go through the IFrame API.
 
-**Resolution.** The embed API ignores requests to set a quality, but YouTube still picks the quality based on the player's size. To choose a resolution, the iframe is rendered at that size and scaled down with a CSS transform to fit the screen. YouTube can still lower it if the connection is slow.
+**Resolution.** The embed API ignores `setPlaybackQuality` and similar calls, so a site can't set the quality directly. What does work is YouTube's own quality menu: a choice made there is stored by YouTube (`yt-player-quality`, about a year) and applied to every embedded player on the same site. The resolution button therefore reloads one screen with YouTube's native controls so the user can pick a quality from its settings menu, then switches back. The choice then applies to all screens and future visits.
 
 **Search** (`/api/search`) uses the Data API when a key is set and otherwise parses YouTube's search results page, filtered to live streams.
 

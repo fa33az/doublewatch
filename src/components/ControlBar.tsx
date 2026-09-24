@@ -1,18 +1,11 @@
 "use client";
 
 import React from 'react';
-import { Settings, Search, Link2, Library, SlidersHorizontal, MessagesSquare, Expand, Minimize, Volume2 } from 'lucide-react';
-import { MIX_ALL } from '../lib/mixer';
-import { CHANNEL_COLORS } from '../lib/chat';
+import { Settings, Search, Link2, Library, SlidersHorizontal, MessagesSquare, Expand, Minimize } from 'lucide-react';
+import AudioControl, { type AudioControlProps } from './AudioControl';
 
-interface ControlBarProps {
-  n: number;
-  audioMix: number;
-  onCrossfader: (value: number) => void;
-  solo: number;
-  onSolo: (slot: number) => void;
-  swipeAudioSlot: number | null;   // mobile swipe with "audio follows screen"
-  onSelectScreen: (slot: number) => void;
+interface ControlBarProps extends AudioControlProps {
+  showAudio: boolean;              // false on phones in portrait: the audio control lives under the videos
   masterMuted: boolean;
   liveFollows: number;             // followed channels currently live (badge on Library)
   mixerOpen: boolean;
@@ -57,49 +50,11 @@ const DockButton: React.FC<DockButtonProps> = ({ icon, label, tip, onClick, prim
 );
 
 const ControlBar: React.FC<ControlBarProps> = ({
-  n, audioMix, onCrossfader, solo, onSolo, swipeAudioSlot, onSelectScreen, masterMuted, liveFollows,
+  showAudio, masterMuted, liveFollows,
   mixerOpen, combinedChatOpen, theater,
   onOpenSearch, onOpenLibrary, onToggleMixer, onToggleCombinedChat, onToggleTheater, onShare, onOpenSettings,
+  ...audioProps
 }) => {
-  const slots = Array.from({ length: n }, (_, i) => i);
-  const ch = (i: number) => ({ ['--ch' as string]: CHANNEL_COLORS[i] });
-
-  const audio = swipeAudioSlot !== null ? (
-    // Phone swipe mode: the visible screen is the audible one; buttons jump between screens
-    <div className="follow-note">
-      <div className="segmented is-mono" role="tablist" aria-label="Pilih layar">
-        {slots.map(i => (
-          <button key={i} role="tab" aria-selected={swipeAudioSlot === i} onClick={() => onSelectScreen(i)} style={ch(i)}>CH {i + 1}</button>
-        ))}
-      </div>
-      <span className="follow-note-hint"><Volume2 size={13} /> ikut layar</span>
-    </div>
-  ) : n === 2 ? (
-    <div className="xfade">
-      <span className={`xfade-label ${audioMix <= 0 ? 'is-on' : ''}`} style={ch(0)}>CH 1</span>
-      <div className="xfade-track">
-        <input
-          type="range" className="range xfader"
-          min="-100" max="100" value={audioMix}
-          aria-label="Crossfader CH 1 – CH 2"
-          onChange={e => onCrossfader(Number(e.target.value))}
-        />
-      </div>
-      <span className={`xfade-label ${audioMix >= 0 ? 'is-on' : ''}`} style={ch(1)}>CH 2</span>
-    </div>
-  ) : (
-    <div className="segmented is-mono" role="radiogroup" aria-label="Channel yang terdengar">
-      {slots.map(i => (
-        <button key={i} role="radio" aria-checked={solo === i} onClick={() => onSolo(i)} style={ch(i)} data-tip={`Dengarkan CH ${i + 1} saja · ${i + 1}`}>
-          CH {i + 1}
-        </button>
-      ))}
-      <button role="radio" aria-checked={solo === MIX_ALL} onClick={() => onSolo(MIX_ALL)} data-tip="Dengarkan semua · 0">
-        MIX
-      </button>
-    </div>
-  );
-
   return (
     <div className="dock-area">
       <div className="dock" role="toolbar" aria-label="Kontrol">
@@ -108,9 +63,13 @@ const ControlBar: React.FC<ControlBarProps> = ({
           <DockButton icon={<Library size={18} />} label="Library" tip="Library · L" onClick={onOpenLibrary} badge={liveFollows} />
         </div>
 
-        <span className="dock-sep" aria-hidden="true" />
-        <div className="dock-audio">{audio}</div>
-        <span className="dock-sep" aria-hidden="true" />
+        {showAudio && (
+          <>
+            <span className="dock-sep" aria-hidden="true" />
+            <div className="dock-audio"><AudioControl {...audioProps} /></div>
+            <span className="dock-sep" aria-hidden="true" />
+          </>
+        )}
 
         <div className="dock-group">
           <DockButton

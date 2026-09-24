@@ -5,6 +5,8 @@ import { Volume2, VolumeX, RotateCcw, X } from 'lucide-react';
 import { DEFAULT_LEVELS, type MixerLevels } from '../lib/mixer';
 import { CHANNEL_COLORS } from '../lib/chat';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
 interface MixerPanelProps {
   n: number;
@@ -51,10 +53,11 @@ const Strip: React.FC<StripProps> = ({ label, sub, color, value, muted, output, 
   </div>
 );
 
-/** Per-channel trim + mute and a master level; a popover above the bar, a sheet on phones. */
+/** Per-channel trim + mute and a master level; a popover above the bar, a swipe-to-close sheet on phones. */
 const MixerPanel: React.FC<MixerPanelProps> = ({ n, levels, volumes, titles, onChange, onClose }) => {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true, onClose);
+  useSwipeToClose(ref, onClose, useMediaQuery('(max-width: 768px)'));
 
   const setAt = <T,>(arr: T[], i: number, v: T) => arr.map((x, j) => (j === i ? v : x));
 
@@ -62,12 +65,13 @@ const MixerPanel: React.FC<MixerPanelProps> = ({ n, levels, volumes, titles, onC
     <>
       <div className="popover-backdrop" onClick={onClose} />
       <div ref={ref} className="popover" role="dialog" aria-modal="true" aria-label="Mixer volume" tabIndex={-1}>
+        <div className="sheet-handle" aria-hidden="true" />
         <div className="dialog-header">
           <h2 className="dialog-title">Mixer</h2>
           <button className="icon-btn" onClick={() => onChange(DEFAULT_LEVELS)} aria-label="Reset mixer" title="Reset semua ke 100%">
             <RotateCcw size={16} />
           </button>
-          <button className="icon-btn" onClick={onClose} aria-label="Tutup mixer"><X size={18} /></button>
+          <button className="icon-btn sheet-close" onClick={onClose} aria-label="Tutup mixer"><X size={18} /></button>
         </div>
 
         <div className="popover-body">

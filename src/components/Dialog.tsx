@@ -4,6 +4,8 @@ import React, { useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
 interface DialogProps {
   label: string;
@@ -13,16 +15,18 @@ interface DialogProps {
 }
 
 /**
- * Accessible dialog (a bottom sheet on phones). Rendered into <body> so nested dialogs
- * stack correctly; backdrop click and Esc close it, Tab focus stays inside.
+ * Accessible dialog (a bottom sheet on phones, closable by swiping down). Rendered into <body>
+ * so nested dialogs stack correctly; backdrop click and Esc close it, Tab focus stays inside.
  */
 const Dialog: React.FC<DialogProps> = ({ label, onClose, size = 'md', children }) => {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true, onClose);
+  useSwipeToClose(ref, onClose, useMediaQuery('(max-width: 640px)'));
 
   return createPortal(
     <div className="dialog-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={ref} className={`dialog is-${size}`} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1}>
+        <div className="sheet-handle" aria-hidden="true" />
         {children}
       </div>
     </div>,
@@ -34,7 +38,7 @@ export const DialogHeader: React.FC<{ title: string; onClose: () => void; childr
   <div className="dialog-header">
     <h2 className="dialog-title">{title}</h2>
     {children}
-    <button className="icon-btn" onClick={onClose} aria-label="Tutup"><X size={18} /></button>
+    <button className="icon-btn sheet-close" onClick={onClose} aria-label="Tutup"><X size={18} /></button>
   </div>
 );
 

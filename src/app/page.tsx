@@ -8,6 +8,7 @@ import SettingsPanel from '../components/SettingsPanel';
 import YouTubeSearch from '../components/YouTubeSearch';
 import LibraryPanel, { type FollowState } from '../components/LibraryPanel';
 import ControlBar from '../components/ControlBar';
+import NowPanel from '../components/NowPanel';
 import MixerPanel from '../components/MixerPanel';
 import ShortcutHelp from '../components/ShortcutHelp';
 import CombinedChat from '../components/CombinedChat';
@@ -18,7 +19,6 @@ import { useAutoHide } from '../hooks/useAutoHide';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type AppSettings } from '../lib/settings';
 import { DEFAULT_LEVELS, MAX_CHANNELS, MIX_ALL, computeVolumes, loadLevels, saveLevels, type MixerLevels } from '../lib/mixer';
 import { computeGrid } from '../lib/layout';
-import { loadQualityTargets, saveQualityTargets, type QualityTarget } from '../lib/quality';
 import {
   emptyChannels, loadChannels, persistChannel, channelsFromShareLink, shareUrl, watchUrl, type Channel,
 } from '../lib/channels';
@@ -56,7 +56,6 @@ function App() {
   const [levels,        setLevels]        = useState<MixerLevels>(DEFAULT_LEVELS);
   const [paused,        setPaused]        = useState<boolean[]>(() => Array(MAX_CHANNELS).fill(false));
   const [chatOn,        setChatOn]        = useState<boolean[]>(() => Array(MAX_CHANNELS).fill(false));
-  const [qualityTargets, setQualityTargets] = useState<QualityTarget[]>(() => Array(MAX_CHANNELS).fill('auto'));
   const [videoInfo,     setVideoInfo]     = useState<Record<string, VideoRef>>({});
   const [presets,       setPresets]       = useState<Preset[]>([]);
   const [history,       setHistory]       = useState<HistoryEntry[]>([]);
@@ -64,6 +63,7 @@ function App() {
   const [followStatus,  setFollowStatus]  = useState<Record<string, FollowState>>({});
   const [spotlightSlot, setSpotlightSlot] = useState(0);
   const [visibleSlot,   setVisibleSlot]   = useState(0);
+  const [pseudoFsSlot,  setPseudoFsSlot]  = useState<number | null>(null);   // iPhone "fullscreen" fallback
 
   // Audio: crossfader (-100..100) for 2ch, solo index (or MIX_ALL) for 3-4ch
   const [audioMix,      setAudioMix]      = useState(-100);
@@ -102,7 +102,6 @@ function App() {
     setSettings(loadedSettings);
     setChannels(loadedChannels);
     setLevels(loadLevels());
-    setQualityTargets(loadQualityTargets());
     setPresets(loadPresets());
     setHistory(loadHistory());
     setFollows(loadFollows());
@@ -114,6 +113,9 @@ function App() {
   const soloChannel = activeChannel >= n ? 0 : activeChannel; // 4 → 3 screens must not solo an off-screen channel
 
   const isMobile = useMediaQuery('(max-width: 768px)');
+  // A phone turned sideways goes immersive like the YouTube app: screens fill it, the dock hides
+  const isLandscapePhone = useMediaQuery('(orientation: landscape) and (max-height: 500px) and (pointer: coarse)');
+  const immersive = theater || isLandscapePhone;
   const swipe = isMobile && settings.mobileMode === 'swipe';
   const shownSlot = Math.min(visibleSlot, n - 1);
   const swipeAudioSlot = swipe && settings.swipeAudioFollows ? shownSlot : null;
@@ -125,7 +127,7 @@ function App() {
   const audioSlot = n === 2 ? (audioMix > 0 ? 1 : 0) : soloChannel === MIX_ALL ? null : soloChannel;
   const bigSlot = Math.min(settings.spotlightFollowsAudio && audioSlot !== null ? audioSlot : spotlightSlot, n - 1);
   const grid = computeGrid({ n, mode: settings.layoutMode, bigSlot, splitRatio: settings.splitRatio, isMobile });
-  const showDivider = !swipe && settings.layoutMode === 'grid' && n === 2;
+  const showDivider = !isMobile && settings.layoutMode === 'grid' && n === 2;
 
   const handleSettingsChange = (s: AppSettings) => {
     setSettings(s);
@@ -314,14 +316,21 @@ function App() {
     if (theater) {
       setTheater(false);
       if (theaterFullscreenRef.current && document.fullscreenElement) document.exitFullscreen();
+      screen.orientation?.unlock?.();
       theaterFullscreenRef.current = false;
       return;
     }
     setTheater(true);
-    toast('Mode Teater — tekan F atau Esc untuk keluar');
-    // iOS Safari can't fullscreen the page; theater still hides the mixer there
+    const touch = window.matchMedia('(pointer: coarse)').matches;
+    toast(touch ? 'Mode Teater — ketuk layar untuk kontrol' : 'Mode Teater — tekan F atau Esc untuk keluar');
+    // iOS Safari can't fullscreen the page; theater still hides the dock there.
+    // On phones, also turn to landscape like the YouTube app's fullscreen.
     document.documentElement.requestFullscreen?.()
-      .then(() => { theaterFullscreenRef.current = true; })
+      .then(() => {
+        theaterFullscreenRef.current = true;
+        const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+        if (touch) orientation?.lock?.('landscape').catch(() => {});
+      })
       .catch(() => {});
   }, [theater, toast]);
 
@@ -336,17 +345,12 @@ function App() {
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
-  // In theater mode the dock slides in on any pointer movement or tap, then hides when idle
+  // In theater / immersive mode the dock slides in on any pointer movement or tap, then hides when idle
   const onAppPointerMove = () => {
-    if (theater) dockReveal.poke();
+    if (immersive) dockReveal.poke();
   };
   // Keep it up while a panel opened from it is showing
   const dockVisible = dockReveal.visible || panel !== null;
-
-  const handleQualityTargets = (next: QualityTarget[]) => {
-    setQualityTargets(next);
-    saveQualityTargets(next);
-  };
 
   const setLevel = (slot: number, level: number) =>
     handleLevelsChange({ ...levels, trims: setAt(levels.trims, slot, level), mutes: setAt(levels.mutes, slot, false) });
@@ -479,7 +483,7 @@ function App() {
       {panel === 'help' && <ShortcutHelp onClose={() => setPanel(null)} />}
 
       <div
-        className={`app ${theater ? 'is-theater' : ''} ${theater && dockVisible ? 'dock-visible' : ''} ${!theater && !isMobile ? 'dock-reserved' : ''}`}
+        className={`app ${immersive ? 'is-theater' : ''} ${immersive && dockVisible ? 'dock-visible' : ''} ${!immersive && !isMobile ? 'dock-reserved' : ''}`}
         onPointerMove={onAppPointerMove}
         onPointerDown={onAppPointerMove}
       >
@@ -497,7 +501,7 @@ function App() {
                 <section
                   key={slot}
                   data-slot={slot}
-                  className={`screen ${swipe || grid.atBottom(slot) ? 'is-bottom' : ''}`}
+                  className={`screen ${swipe || grid.atBottom(slot) ? 'is-bottom' : ''} ${pseudoFsSlot === slot ? 'is-pseudo-fs' : ''}`}
                   style={swipe ? undefined : { gridArea: grid.areaOf(slot) }}
                   aria-label={`Layar CH ${slot + 1}`}
                 >
@@ -515,17 +519,16 @@ function App() {
                         settings={settings}
                         paused={paused[slot]}
                         onTogglePause={() => setPaused(p => setAt(p, slot, !p[slot]))}
-                        showChat={chatOn[slot]}
-                        onToggleChat={() => setChatOn(c => setAt(c, slot, !c[slot]))}
+                        showChat={isMobile ? combinedChat : chatOn[slot]}
+                        inlineChat={!isMobile}
+                        onToggleChat={isMobile ? () => setCombinedChat(c => !c) : () => setChatOn(c => setAt(c, slot, !c[slot]))}
+                        onPseudoFullscreen={() => setPseudoFsSlot(s => (s === slot ? null : slot))}
                         canPromote={settings.layoutMode === 'spotlight' && !swipe && slot !== bigSlot}
                         onPromote={() => promote(slot)}
                         onReplace={() => openSearch('', slot)}
                         onSwap={target => swapChannels(slot, target)}
                         onClear={() => updateChannel(slot, '')}
                         onInfo={onInfo}
-                        qualityTarget={qualityTargets[slot]}
-                        onQualityTargetChange={q => handleQualityTargets(setAt(qualityTargets, slot, q))}
-                        onQualityTargetAll={q => { handleQualityTargets(Array(MAX_CHANNELS).fill(q)); toast('Resolusi diterapkan ke semua layar'); }}
                       />
                     : <EmptyChannel
                         channel={slot + 1}
@@ -565,6 +568,27 @@ function App() {
             </div>
           )}
 
+          {isMobile && !combinedChat && (
+            <NowPanel
+              n={n}
+              audioMix={audioMix}
+              onCrossfader={onCrossfader}
+              solo={soloChannel}
+              onSolo={setActiveChannel}
+              swipeAudioSlot={swipeAudioSlot}
+              onSelectScreen={scrollToSlot}
+              videoIds={channels.slice(0, n).map(c => c.id)}
+              videoInfo={videoInfo}
+              volumes={volumes}
+              levels={levels.trims}
+              mutes={levels.mutes}
+              onLevelChange={setLevel}
+              onToggleMute={toggleMute}
+              onSearch={slot => openSearch('', slot)}
+              swipe={swipe}
+            />
+          )}
+
           {combinedChat && (
             <CombinedChat
               videoIds={channels.slice(0, n).map(c => c.id)}
@@ -575,6 +599,7 @@ function App() {
         </div>
 
         <ControlBar
+          showAudio={!isMobile}
           n={n}
           audioMix={audioMix}
           onCrossfader={onCrossfader}

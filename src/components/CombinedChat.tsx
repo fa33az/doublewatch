@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { X, MessagesSquare, MessageSquareOff } from 'lucide-react';
 import type { AppSettings } from '../lib/settings';
 import type { ChatMessage } from '../lib/youtube';
 import { CHANNEL_COLORS, isBlocked, parseBlockedWords } from '../lib/chat';
 import { useLiveChat } from '../hooks/useLiveChat';
 import { useStickToBottom } from '../hooks/useStickToBottom';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 import ChatLine from './ChatLine';
 
 const MAX_MESSAGES = 300;
@@ -34,6 +36,8 @@ interface Props {
 const CombinedChat: React.FC<Props> = ({ videoIds, settings, onClose }) => {
   const [messages, setMessages] = useState<TaggedMessage[]>([]);
   const [listRef, onScroll] = useStickToBottom<HTMLDivElement>(messages);
+  const sheetRef = useRef<HTMLElement>(null);
+  useSwipeToClose(sheetRef, onClose, useMediaQuery('(max-width: 768px)'));
   const blocked = useMemo(() => parseBlockedWords(settings.chatBlockedWords), [settings.chatBlockedWords]);
 
   const onMessage = (msg: TaggedMessage) => {
@@ -47,10 +51,11 @@ const CombinedChat: React.FC<Props> = ({ videoIds, settings, onClose }) => {
     .filter((v, i, all) => v.id && all.findIndex(o => o.id === v.id) === i);
 
   return (
-    <aside className="sidebar" aria-label="Chat gabungan">
+    <aside className="sidebar" aria-label="Chat gabungan" ref={sheetRef}>
+      <div className="sheet-handle" aria-hidden="true" />
       <div className="sidebar-header">
         <span className="sidebar-title"><MessagesSquare size={16} /> Chat gabungan</span>
-        <button className="icon-btn" onClick={onClose} aria-label="Tutup chat gabungan"><X size={18} /></button>
+        <button className="icon-btn sheet-close" onClick={onClose} aria-label="Tutup chat gabungan"><X size={18} /></button>
       </div>
 
       <div className="sidebar-notes">
