@@ -1,283 +1,297 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { X, Sliders, MessageSquare, Keyboard, Trash2, RefreshCw, Info, Tv } from 'lucide-react';
+import React, { useState } from 'react';
+import { Trash2, RefreshCw } from 'lucide-react';
+import { TUTORIAL_KEY } from './TutorialOverlay';
+import Dialog, { DialogHeader } from './Dialog';
+import ConfirmDialog from './ConfirmDialog';
+import { ShortcutList } from './ShortcutHelp';
+import { useToast } from './Toast';
+import type { AppSettings } from '../lib/settings';
+import type { Channel } from '../lib/channels';
+import { CHANNEL_COLORS } from '../lib/chat';
 
-export interface AppSettings {
-  crossfaderSpeed: number;
-  chatDuration: number;
-  showMemberBadge: boolean;
-  showModBadge: boolean;
-  autoLiveSync: boolean;
-  danmakuMinGap: number;
-  channelCount: 2 | 3 | 4;
-}
-
-export const DEFAULT_SETTINGS: AppSettings = {
-  crossfaderSpeed: 800,
-  chatDuration: 12,
-  showMemberBadge: true,
-  showModBadge: true,
-  autoLiveSync: true,
-  danmakuMinGap: 2.5,
-  channelCount: 2,
-};
-
-const STORAGE_KEY = 'dw_settings';
-
-export function loadSettings(): AppSettings {
-  if (typeof window === 'undefined') return { ...DEFAULT_SETTINGS };
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
-  } catch {}
-  return { ...DEFAULT_SETTINGS };
-}
-
-export function saveSettings(s: AppSettings) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-}
-
-// ─── Subcomponents ──────────────────────────────────────────────────────────
-const Toggle: React.FC<{ value: boolean; onChange: (v: boolean) => void }> = ({ value, onChange }) => (
-  <button className={`stg-toggle ${value ? 'on' : ''}`} onClick={() => onChange(!value)}>
-    <span className="stg-toggle-knob" />
-  </button>
+// ─── Rows ────────────────────────────────────────────────────────────────────
+const SettingText: React.FC<{ label: string; hint?: string; id?: string }> = ({ label, hint, id }) => (
+  <div className="setting-text">
+    <span className="setting-label" id={id}>{label}</span>
+    {hint && <span className="setting-hint">{hint}</span>}
+  </div>
 );
 
 const SliderRow: React.FC<{
-  label: string; sub?: string;
+  label: string; hint?: string;
   min: number; max: number; step: number;
   value: number; unit: string;
   onChange: (v: number) => void;
-}> = ({ label, sub, min, max, step, value, unit, onChange }) => (
-  <div className="stg-row">
-    <div className="stg-row-info">
-      <span className="stg-row-label">{label}</span>
-      {sub && <span className="stg-row-sub">{sub}</span>}
-    </div>
-    <div className="stg-slider-group">
-      <input type="range" className="stg-slider" min={min} max={max} step={step} value={value}
-        onChange={e => onChange(Number(e.target.value))} />
-      <span className="stg-val">{value}{unit}</span>
+}> = ({ label, hint, min, max, step, value, unit, onChange }) => (
+  <div className="setting">
+    <SettingText label={label} hint={hint} />
+    <div className="setting-range">
+      <input
+        type="range" className="range" min={min} max={max} step={step} value={value}
+        style={{ ['--p' as string]: `${((value - min) / (max - min)) * 100}%` }}
+        aria-label={label}
+        onChange={e => onChange(Number(e.target.value))}
+      />
+      <span className="setting-value">{value}{unit}</span>
     </div>
   </div>
 );
 
 const ToggleRow: React.FC<{
-  label: string; sub?: string;
+  label: string; hint?: string;
   value: boolean; onChange: (v: boolean) => void;
-}> = ({ label, sub, value, onChange }) => (
-  <div className="stg-row">
-    <div className="stg-row-info">
-      <span className="stg-row-label">{label}</span>
-      {sub && <span className="stg-row-sub">{sub}</span>}
-    </div>
-    <Toggle value={value} onChange={onChange} />
+}> = ({ label, hint, value, onChange }) => (
+  <div className="setting">
+    <SettingText label={label} hint={hint} />
+    <button className="switch" role="switch" aria-checked={value} aria-label={label} onClick={() => onChange(!value)} />
   </div>
 );
 
+function SegmentedRow<T extends string>({ label, hint, options, value, onChange }: {
+  label: string; hint?: string;
+  options: { value: T; label: string }[];
+  value: T; onChange: (v: T) => void;
+}) {
+  const id = `seg-${label.replace(/\W+/g, '-').toLowerCase()}`;
+  return (
+    <div className="setting is-stacked">
+      <SettingText label={label} hint={hint} id={id} />
+      <div className="segmented" role="radiogroup" aria-labelledby={id}>
+        {options.map(o => (
+          <button key={o.value} role="radio" aria-checked={value === o.value} onClick={() => onChange(o.value)}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 interface Props {
-  open: boolean;
   onClose: () => void;
   settings: AppSettings;
   onChange: (s: AppSettings) => void;
   onClearUrls: () => void;
-  channels: { url: string; id: string }[];
+  channels: Channel[];
   onChannelChange: (idx: number, url: string) => void;
+  onChannelSubmit: (idx: number, url: string) => void;   // Enter / blur: resolves @handles
 }
 
-const TABS = [
-  { id: 'channels', icon: <Tv size={14} />, label: 'Channel' },
-  { id: 'playback', icon: <Sliders size={14} />, label: 'Playback' },
-  { id: 'chat',     icon: <MessageSquare size={14} />, label: 'Chat' },
-  { id: 'keys',     icon: <Keyboard size={14} />, label: 'Keys' },
-  { id: 'about',    icon: <Info size={14} />, label: 'Tentang' },
+type TabId = 'screens' | 'audio' | 'chat' | 'keys' | 'about';
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'screens', label: 'Layar' },
+  { id: 'audio', label: 'Audio' },
+  { id: 'chat', label: 'Chat' },
+  { id: 'keys', label: 'Shortcut' },
+  { id: 'about', label: 'Tentang' },
 ];
 
-const SHORTCUTS = [
-  { keys: ['1', '←'], desc: 'Audio penuh ke Channel 1' },
-  { keys: ['2', '→'], desc: 'Audio penuh ke Channel 2' },
-  { keys: ['3', '↑', '↓'], desc: 'Mix 50/50 kedua channel' },
+const COUNT_OPTIONS: { count: 2 | 3 | 4; label: string }[] = [
+  { count: 2, label: '2 layar' },
+  { count: 3, label: '3 layar' },
+  { count: 4, label: '4 layar' },
 ];
 
-const LAYOUT_OPTIONS: { count: 2 | 3 | 4; label: string; icon: string }[] = [
-  { count: 2, label: '2 Layar', icon: '⬛⬛' },
-  { count: 3, label: '3 Layar', icon: '⬛⬛⬛' },
-  { count: 4, label: '4 Layar', icon: '⬛⬛\n⬛⬛' },
-];
-
-const SettingsPanel: React.FC<Props> = ({ open, onClose, settings, onChange, onClearUrls, channels, onChannelChange }) => {
-  const [tab, setTab] = useState('channels');
+const SettingsPanel: React.FC<Props> = ({ onClose, settings, onChange, onClearUrls, channels, onChannelChange, onChannelSubmit }) => {
+  const toast = useToast();
+  const [tab, setTab] = useState<TabId>('screens');
+  const [confirmClear, setConfirmClear] = useState(false);
   const set = (partial: Partial<AppSettings>) => onChange({ ...settings, ...partial });
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    if (open) window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  const activeCount = settings.channelCount;
+  const count = settings.channelCount;
 
   return (
-    <div className="stg-backdrop" onClick={onClose}>
-      <div className="stg-panel" onClick={e => e.stopPropagation()}>
+    <Dialog label="Pengaturan" onClose={onClose}>
+      <DialogHeader title="Pengaturan" onClose={onClose} />
 
-          <div className="stg-header">
-            <h2 className="stg-title">Pengaturan</h2>
-            <button className="stg-close" onClick={onClose}><X size={18} /></button>
-          </div>
-
-          <div className="stg-tabs">
-            {TABS.map(t => (
-              <button key={t.id} className={`stg-tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
-                {t.icon}{t.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="stg-body">
-
-            {/* ── CHANNELS ── */}
-            {tab === 'channels' && (
-              <div className="stg-section">
-
-                {/* Layout picker */}
-                <div>
-                  <p className="stg-row-label" style={{ marginBottom: '0.75rem' }}>Layout Layar</p>
-                  <div className="layout-picker">
-                    {LAYOUT_OPTIONS.map(o => (
-                      <button
-                        key={o.count}
-                        className={`layout-option ${activeCount === o.count ? 'active' : ''}`}
-                        onClick={() => set({ channelCount: o.count })}
-                      >
-                        <span className="layout-grid" data-count={o.count}>
-                          {Array.from({ length: o.count }).map((_, i) => <span key={i} className="layout-cell" />)}
-                        </span>
-                        <span className="layout-label">{o.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Channel URL inputs */}
-                <div className="stg-channels-list">
-                  {Array.from({ length: activeCount }).map((_, idx) => (
-                    <div key={idx} className="stg-channel-row">
-                      <span className="stg-ch-label">CH {idx + 1}</span>
-                      <input
-                        type="text"
-                        className="stg-ch-input"
-                        placeholder="YouTube URL atau ID..."
-                        value={channels[idx]?.url || ''}
-                        onChange={e => onChannelChange(idx, e.target.value)}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                {/* API Key section removed — search uses backend */}
-              </div>
-            )}
-
-            {/* ── PLAYBACK ── */}
-            {tab === 'playback' && (
-              <div className="stg-section">
-                <SliderRow
-                  label="Kecepatan Crossfader"
-                  sub="Durasi animasi fade antar channel"
-                  min={200} max={2000} step={100}
-                  value={settings.crossfaderSpeed} unit="ms"
-                  onChange={v => set({ crossfaderSpeed: v })}
-                />
-                <ToggleRow
-                  label="Auto Sync ke Live Edge"
-                  sub="Langsung seekTo live saat video dimuat"
-                  value={settings.autoLiveSync}
-                  onChange={v => set({ autoLiveSync: v })}
-                />
-              </div>
-            )}
-
-            {/* ── CHAT ── */}
-            {tab === 'chat' && (
-              <div className="stg-section">
-                <SliderRow
-                  label="Kecepatan Pesan"
-                  sub="Berapa detik pesan bergerak melintasi layar"
-                  min={6} max={20} step={1}
-                  value={settings.chatDuration} unit="s"
-                  onChange={v => set({ chatDuration: v })}
-                />
-                <SliderRow
-                  label="Jarak Antar Pesan"
-                  sub="Minimal detik sebelum pesan berikutnya muncul"
-                  min={1} max={6} step={0.5}
-                  value={settings.danmakuMinGap} unit="s"
-                  onChange={v => set({ danmakuMinGap: v })}
-                />
-                <ToggleRow
-                  label="Badge Member"
-                  sub="Tampilkan label hijau untuk member"
-                  value={settings.showMemberBadge}
-                  onChange={v => set({ showMemberBadge: v })}
-                />
-                <ToggleRow
-                  label="Badge Moderator"
-                  sub="Tampilkan label biru untuk moderator"
-                  value={settings.showModBadge}
-                  onChange={v => set({ showModBadge: v })}
-                />
-              </div>
-            )}
-
-            {/* ── SHORTCUTS ── */}
-            {tab === 'keys' && (
-              <div className="stg-section">
-                <p className="stg-desc">Shortcut keyboard bekerja saat fokus bukan di kolom input.</p>
-                <div className="stg-shortcuts">
-                  {SHORTCUTS.map((s, i) => (
-                    <div key={i} className="stg-shortcut-row">
-                      <div className="stg-key-group">
-                        {s.keys.map(k => <kbd key={k} className="stg-kbd">{k}</kbd>)}
-                      </div>
-                      <span className="stg-shortcut-desc">{s.desc}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── ABOUT ── */}
-            {tab === 'about' && (
-              <div className="stg-section">
-                <div className="stg-about-logo">DW</div>
-                <p className="stg-about-name">DoubleWatch</p>
-                <p className="stg-about-sub">Tonton YouTube live secara bersamaan dengan kontrol audio penuh.</p>
-
-                <div className="stg-danger-zone">
-                  <p className="stg-danger-title">Zona Berbahaya</p>
-                  <button className="stg-danger-btn" onClick={() => {
-                    localStorage.removeItem('dw_tutorial_seen');
-                    alert('Tutorial akan muncul lagi saat halaman dibuka kembali.');
-                  }}>
-                    <RefreshCw size={14} /> Reset Tutorial
-                  </button>
-                  <button className="stg-danger-btn red" onClick={() => {
-                    if (confirm('Hapus semua URL yang tersimpan?')) { onClearUrls(); onClose(); }
-                  }}>
-                    <Trash2 size={14} /> Hapus URL Tersimpan
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+      <div className="tabs" role="tablist">
+        {TABS.map(t => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id} className="tab" onClick={() => setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
       </div>
+
+      <div className="dialog-body">
+
+        {/* ── LAYAR ── */}
+        {tab === 'screens' && (
+          <div className="stack-lg">
+            <div className="layout-options" role="radiogroup" aria-label="Jumlah layar">
+              {COUNT_OPTIONS.map(o => (
+                <button
+                  key={o.count}
+                  role="radio"
+                  aria-checked={count === o.count}
+                  className="layout-option"
+                  onClick={() => set({ channelCount: o.count })}
+                >
+                  <span className="layout-glyph" data-count={o.count}>
+                    {Array.from({ length: o.count }).map((_, i) => <span key={i} />)}
+                  </span>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+
+            <SegmentedRow
+              label="Tata letak"
+              hint="Spotlight: satu layar besar, sisanya kecil di samping"
+              options={[{ value: 'grid', label: 'Grid' }, { value: 'spotlight', label: 'Spotlight' }]}
+              value={settings.layoutMode}
+              onChange={v => set({ layoutMode: v })}
+            />
+            {settings.layoutMode === 'spotlight' && (
+              <ToggleRow
+                label="Layar besar ikut audio"
+                hint="Channel yang sedang terdengar otomatis jadi layar besar"
+                value={settings.spotlightFollowsAudio}
+                onChange={v => set({ spotlightFollowsAudio: v })}
+              />
+            )}
+
+            <div className="stack">
+              <h3 className="section-title">Siaran</h3>
+              <div className="channel-inputs">
+                {Array.from({ length: count }).map((_, idx) => (
+                  <div key={idx} className="channel-input">
+                    <label className="ch-chip" htmlFor={`stg-ch-${idx}`} style={{ ['--ch' as string]: CHANNEL_COLORS[idx] }}>
+                      CH {idx + 1}
+                    </label>
+                    <input
+                      id={`stg-ch-${idx}`}
+                      type="text"
+                      className="input"
+                      placeholder="Link YouTube, ID video, atau @channel"
+                      value={channels[idx]?.url || ''}
+                      onChange={e => onChannelChange(idx, e.target.value)}
+                      onBlur={e => onChannelSubmit(idx, e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') onChannelSubmit(idx, e.currentTarget.value); }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="stack">
+              <h3 className="section-title">Di HP</h3>
+              <SegmentedRow
+                label="Tampilan"
+                hint="Geser: satu layar penuh, pindah dengan swipe"
+                options={[{ value: 'swipe', label: 'Geser' }, { value: 'stack', label: 'Tumpuk' }]}
+                value={settings.mobileMode}
+                onChange={v => set({ mobileMode: v })}
+              />
+              {settings.mobileMode === 'swipe' && (
+                <ToggleRow
+                  label="Audio ikut layar"
+                  hint="Hanya layar yang sedang terlihat yang terdengar"
+                  value={settings.swipeAudioFollows}
+                  onChange={v => set({ swipeAudioFollows: v })}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── AUDIO ── */}
+        {tab === 'audio' && (
+          <div className="stack-lg">
+            <SegmentedRow
+              label="Kurva crossfader"
+              hint="Standar: keduanya penuh di tengah · Constant power: volume terasa rata · Cut: pindah tajam di ujung"
+              options={[
+                { value: 'standard', label: 'Standar' },
+                { value: 'power', label: 'Constant power' },
+                { value: 'cut', label: 'Cut' },
+              ]}
+              value={settings.crossfaderCurve}
+              onChange={v => set({ crossfaderCurve: v })}
+            />
+            <SliderRow
+              label="Kecepatan fade"
+              hint="Durasi fade saat memakai shortcut 1 / 2 / 3"
+              min={200} max={2000} step={100}
+              value={settings.crossfaderSpeed} unit="ms"
+              onChange={v => set({ crossfaderSpeed: v })}
+            />
+            <ToggleRow
+              label="Otomatis ke posisi live"
+              hint="Lompat ke bagian live terbaru saat siaran dimuat atau dilanjutkan"
+              value={settings.autoLiveSync}
+              onChange={v => set({ autoLiveSync: v })}
+            />
+          </div>
+        )}
+
+        {/* ── CHAT ── */}
+        {tab === 'chat' && (
+          <div className="stack-lg">
+            <div className="setting is-stacked">
+              <SettingText label="Kata terblokir" hint="Pesan yang mengandung kata ini disembunyikan. Pisahkan dengan koma." />
+              <input
+                className="input"
+                placeholder="spam, promo, …"
+                value={settings.chatBlockedWords}
+                onChange={e => set({ chatBlockedWords: e.target.value })}
+                aria-label="Kata terblokir"
+              />
+            </div>
+            <ToggleRow
+              label="Tandai member"
+              value={settings.showMemberBadge}
+              onChange={v => set({ showMemberBadge: v })}
+            />
+            <ToggleRow
+              label="Tandai moderator"
+              value={settings.showModBadge}
+              onChange={v => set({ showModBadge: v })}
+            />
+          </div>
+        )}
+
+        {/* ── SHORTCUT ── */}
+        {tab === 'keys' && <ShortcutList />}
+
+        {/* ── TENTANG ── */}
+        {tab === 'about' && (
+          <div className="stack-lg">
+            <div className="about">
+              <div className="about-mark" aria-hidden="true"><span /><span /></div>
+              <p className="about-name">DoubleWatch</p>
+              <p className="about-sub">Tonton beberapa YouTube live sekaligus dengan kontrol audio penuh.</p>
+            </div>
+
+            <div className="danger-zone">
+              <button className="btn btn-block" onClick={() => {
+                try { localStorage.removeItem(TUTORIAL_KEY); } catch {}
+                toast('Tutorial akan muncul lagi saat halaman dibuka kembali.', 3500);
+              }}>
+                <RefreshCw size={15} /> Tampilkan tutorial lagi
+              </button>
+              <button className="btn btn-block btn-danger" onClick={() => setConfirmClear(true)}>
+                <Trash2 size={15} /> Kosongkan semua layar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {confirmClear && (
+        <ConfirmDialog
+          title="Kosongkan semua layar?"
+          message="Semua siaran yang sedang diputar akan dihapus. Preset dan riwayat di Library tidak ikut terhapus."
+          confirmLabel="Kosongkan"
+          danger
+          onConfirm={() => { setConfirmClear(false); onClearUrls(); onClose(); toast('Semua layar dikosongkan'); }}
+          onCancel={() => setConfirmClear(false)}
+        />
+      )}
+    </Dialog>
   );
 };
 

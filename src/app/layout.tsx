@@ -1,9 +1,40 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Nunito } from "next/font/google";
 import "./globals.css";
 
+// Nunito, as on tako.id — one family for everything keeps the page light
+const nunito = Nunito({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-nunito",
+});
+
+const title = "DoubleWatch - Multi-Screen YouTube Live";
+const description = "Tonton 2 sampai 4 siaran YouTube live sekaligus, lengkap dengan crossfader audio dan live chat.";
+
 export const metadata: Metadata = {
-  title: "DoubleWatch - Dual YouTube Streaming",
-  description: "Watch multiple YouTube streams simultaneously",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  title,
+  description,
+  applicationName: "DoubleWatch",
+  openGraph: {
+    type: "website",
+    siteName: "DoubleWatch",
+    title,
+    description,
+    locale: "id_ID",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0f191e",
+  colorScheme: "dark",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -12,12 +43,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="id" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      </head>
+    <html lang="id" className={nunito.variable} suppressHydrationWarning>
       <body suppressHydrationWarning>
         {children}
       </body>
